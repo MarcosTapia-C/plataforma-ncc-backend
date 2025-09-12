@@ -1,3 +1,4 @@
+// src/rutas/monitoreos.js
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
@@ -47,8 +48,8 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 // ========================================
 // POST /api/monitoreos → crear (SOLO ADMIN)
-// - fecha_inicio_monitoreo es OBLIGATORIA y proviene del admin
-// - Se agrega al comentario la línea con esa fecha
+// - fecha_inicio_monitoreo es OBLIGATORIA
+// - comentarios se guarda EXACTAMENTE como lo escribe el admin
 // ========================================
 router.post(
   '/',
@@ -71,20 +72,16 @@ router.post(
     try {
       const { id_negociacion, fecha_inicio_monitoreo, comentarios } = req.body;
 
-      // Validar FK (pero NO usamos su fecha para nada)
+      // Validar FK (no usamos su fecha, solo verificamos que exista)
       const neg = await Negociacion.findByPk(id_negociacion);
       if (!neg) return res.status(400).json({ ok: false, error: 'NEGOCIACION_NOT_FOUND' });
-
-      const etiqueta = `Fecha de inicio de la negociación: ${fecha_inicio_monitoreo}`;
-      const comentarioFinal = comentarios && comentarios.trim()
-        ? `${comentarios}\n${etiqueta}`
-        : etiqueta;
 
       const creado = await Monitoreo.create({
         id_negociacion,
         fecha_inicio_monitoreo,
-        comentarios: comentarioFinal,
+        comentarios: comentarios && comentarios.trim() ? comentarios : null,
       });
+
       res.status(201).json({ ok: true, data: creado });
     } catch (err) {
       console.error('Error creando monitoreo:', err);
@@ -95,7 +92,6 @@ router.post(
 
 // ========================================
 // PUT /api/monitoreos/:id → actualizar (SOLO ADMIN)
-// - Si envían fecha_inicio_monitoreo, debe ser ISO válida (no se permite vaciar)
 // ========================================
 router.put(
   '/:id',
@@ -136,11 +132,13 @@ router.put(
       }
 
       if (typeof req.body.fecha_inicio_monitoreo !== 'undefined') {
-        item.fecha_inicio_monitoreo = req.body.fecha_inicio_monitoreo; // ya validada arriba
+        item.fecha_inicio_monitoreo = req.body.fecha_inicio_monitoreo; // ya validada
       }
 
       if (typeof req.body.comentarios !== 'undefined') {
-        item.comentarios = req.body.comentarios;
+        item.comentarios = req.body.comentarios && req.body.comentarios.trim()
+          ? req.body.comentarios
+          : null;
       }
 
       await item.save();
