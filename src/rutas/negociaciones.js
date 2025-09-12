@@ -1,4 +1,3 @@
-// src/rutas/negociaciones.js
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
@@ -18,22 +17,40 @@ const NEGOC_INCLUDES = [
   { model: Sindicato, attributes: ['id_sindicato', 'nombre_sindicato'] },
 ];
 
-// ---------- Helpers de validación/calculo ----------
+// ---------- Helpers de fechas/números ----------
 function toDate(val) {
   if (!val) return null;
   const d = new Date(val);
   return isNaN(d.getTime()) ? null : d;
 }
 
+function addMonthsStr(yyyy_mm_dd, m) {
+  if (!yyyy_mm_dd) return null;
+  const d = new Date(yyyy_mm_dd);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setMonth(d.getMonth() + m);
+  const iso = d.toISOString();
+  return iso.slice(0, 10);
+}
+
+function monthsDiff(inicio, fin) {
+  const a = new Date(inicio);
+  const b = new Date(fin);
+  const years = b.getFullYear() - a.getFullYear();
+  const months = b.getMonth() - a.getMonth();
+  const days = b.getDate() - a.getDate();
+  let total = years * 12 + months;
+  if (days < 0) total -= 1;
+  return total;
+}
+
 function calcularPersonalDesdePorcentaje(dot, porc) {
-  // Redondeo al entero más cercano
   return Math.round((Number(dot) * Number(porc)) / 100);
 }
 
 function calcularPorcentajeDesdePersonal(dot, pers) {
   if (!dot || Number(dot) === 0) return 0;
   const v = (Number(pers) / Number(dot)) * 100;
-  // 2 decimales
   return Math.round(v * 100) / 100;
 }
 
@@ -45,18 +62,31 @@ function validarReglasNegocio(body) {
     dotacion_total,
     personal_sindicalizado,
     porcentaje_sindicalizado,
+    estado,
   } = body;
 
   // --- Reglas de FECHAS ---
   const dIni = toDate(fecha_inicio);
-  const dFin = toDate(fecha_termino);
+  let dFin = toDate(fecha_termino);
   const dVig = toDate(vencimiento_contrato_comercial);
+
+  // Si está Cerrada y viene inicio sin fin -> autocompletar fin = inicio + 36 meses
+  if (estado === 'Cerrada' && dIni && !dFin) {
+    body.fecha_termino = addMonthsStr(fecha_inicio, 36);
+    dFin = toDate(body.fecha_termino);
+  }
 
   // término >= inicio
   if (dIni && dFin && dFin < dIni) {
     return 'La fecha de término no puede ser anterior a la fecha de inicio.';
   }
-  // término <= vigencia contrato
+
+  // Vigencia del contrato colectivo: máximo 36 meses
+  if (dIni && dFin && monthsDiff(fecha_inicio, body.fecha_termino) > 36) {
+    return 'La vigencia del contrato colectivo no puede exceder 36 meses.';
+  }
+
+  // término <= vigencia contrato comercial (si lo usas como control externo)
   if (dFin && dVig && dFin > dVig) {
     return 'La fecha de término no puede ser posterior a la vigencia del contrato comercial.';
   }
@@ -71,22 +101,17 @@ function validarReglasNegocio(body) {
   if (porc !== null && (porc < 0 || porc > 100))
     return 'El porcentaje sindicalizado debe estar entre 0 y 100.';
 
-  // personal <= dotación
   if (dot !== null && pers !== null && pers > dot) {
     return 'El personal sindicalizado no puede ser mayor que la dotación total.';
   }
 
-  // Si dotación y porcentaje llegan, y personal no, lo calculamos
+  // Autocálculos consistentes
   if (dot !== null && porc !== null && pers === null) {
     body.personal_sindicalizado = calcularPersonalDesdePorcentaje(dot, porc);
   }
-
-  // Si dotación y personal llegan, y porcentaje no, lo calculamos
   if (dot !== null && pers !== null && porc === null) {
     body.porcentaje_sindicalizado = calcularPorcentajeDesdePersonal(dot, pers);
   }
-
-  // Si llegan los tres (dot, pers, porc), validamos consistencia básica
   if (dot !== null && pers !== null && porc !== null) {
     const esperado = calcularPersonalDesdePorcentaje(dot, porc);
     if (esperado !== pers) {
@@ -168,7 +193,7 @@ router.post(
       const sindicato = await Sindicato.findByPk(id_sindicato);
       if (!sindicato) return res.status(400).json({ ok: false, error: 'SINDICATO_NOT_FOUND' });
 
-      // Reglas de negocio adicionales + autocalculo
+      // Reglas de negocio + autocalculo
       const msg = validarReglasNegocio(req.body);
       if (msg) return res.status(400).json({ ok: false, mensaje: msg });
 
@@ -229,14 +254,14 @@ router.put(
       }
 
       // Aplicar reglas de negocio + autocalculo (sobre la mezcla de item + body)
-      const body = { ...item.toJSON(), ...req.body };
-      const msg = validarReglasNegocio(body);
+      const bodyMerged = { ...item.toJSON(), ...req.body };
+      const msg = validarReglasNegocio(bodyMerged);
       if (msg) return res.status(400).json({ ok: false, mensaje: msg });
 
       // Guardar cambios
       Object.assign(item, req.body, {
-        personal_sindicalizado: body.personal_sindicalizado,
-        porcentaje_sindicalizado: body.porcentaje_sindicalizado,
+        personal_sindicalizado: bodyMerged.personal_sindicalizado,
+        porcentaje_sindicalizado: bodyMerged.porcentaje_sindicalizado,
       });
       await item.save();
 
@@ -271,5 +296,3 @@ router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, 
 });
 
 module.exports = router;
-
-

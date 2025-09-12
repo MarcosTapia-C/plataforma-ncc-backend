@@ -1,4 +1,3 @@
-// src/rutas/monitoreos.js
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
@@ -48,7 +47,8 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 // ========================================
 // POST /api/monitoreos → crear (SOLO ADMIN)
-//  - Si no viene fecha_inicio_monitoreo, se usa la fecha_inicio de la negociación
+// - fecha_inicio_monitoreo es OBLIGATORIA y proviene del admin
+// - Se agrega al comentario la línea con esa fecha
 // ========================================
 router.post(
   '/',
@@ -56,7 +56,10 @@ router.post(
   requireRoles(['Administrador']),
   [
     body('id_negociacion').isInt({ gt: 0 }).withMessage('id_negociacion debe ser entero positivo.'),
-    body('fecha_inicio_monitoreo').optional().isISO8601().withMessage('Fecha inválida (YYYY-MM-DD).'),
+    body('fecha_inicio_monitoreo')
+      .exists().withMessage('fecha_inicio_monitoreo es obligatoria.')
+      .bail()
+      .isISO8601().withMessage('fecha_inicio_monitoreo inválida (YYYY-MM-DD).'),
     body('comentarios').optional().isString(),
   ],
   async (req, res) => {
@@ -64,19 +67,23 @@ router.post(
     if (!errores.isEmpty()) {
       return res.status(400).json({ ok: false, errores: errores.array() });
     }
+
     try {
       const { id_negociacion, fecha_inicio_monitoreo, comentarios } = req.body;
 
-      // Validar FK y obtener fecha de la negociación
+      // Validar FK (pero NO usamos su fecha para nada)
       const neg = await Negociacion.findByPk(id_negociacion);
       if (!neg) return res.status(400).json({ ok: false, error: 'NEGOCIACION_NOT_FOUND' });
 
-      const fechaFinal = fecha_inicio_monitoreo ? fecha_inicio_monitoreo : neg.fecha_inicio;
+      const etiqueta = `Fecha de inicio de la negociación: ${fecha_inicio_monitoreo}`;
+      const comentarioFinal = comentarios && comentarios.trim()
+        ? `${comentarios}\n${etiqueta}`
+        : etiqueta;
 
       const creado = await Monitoreo.create({
         id_negociacion,
-        fecha_inicio_monitoreo: fechaFinal,
-        comentarios,
+        fecha_inicio_monitoreo,
+        comentarios: comentarioFinal,
       });
       res.status(201).json({ ok: true, data: creado });
     } catch (err) {
@@ -88,7 +95,7 @@ router.post(
 
 // ========================================
 // PUT /api/monitoreos/:id → actualizar (SOLO ADMIN)
-//  - Si el admin borra la fecha (null o ""), se vuelve a usar la fecha de la negociación
+// - Si envían fecha_inicio_monitoreo, debe ser ISO válida (no se permite vaciar)
 // ========================================
 router.put(
   '/:id',
@@ -96,12 +103,14 @@ router.put(
   requireRoles(['Administrador']),
   [
     body('id_negociacion').optional().isInt({ gt: 0 }),
-    body('fecha_inicio_monitoreo').optional({ nullable: true }).custom((value) => {
-      // permitir "", null o fecha ISO
-      if (value === '' || value === null) return true;
-      // si no es vacío, validar ISO
+    body('fecha_inicio_monitoreo').optional().custom((value) => {
+      if (value === '' || value === null) {
+        throw new Error('fecha_inicio_monitoreo no puede quedar vacía.');
+      }
       const isoRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!isoRegex.test(value)) throw new Error('Fecha inválida (YYYY-MM-DD).');
+      if (typeof value !== 'undefined' && !isoRegex.test(value)) {
+        throw new Error('fecha_inicio_monitoreo inválida (YYYY-MM-DD).');
+      }
       return true;
     }),
     body('comentarios').optional().isString(),
@@ -117,39 +126,17 @@ router.put(
         return res.status(400).json({ ok: false, error: 'ID_INVALIDO' });
       }
 
-      const item = await Monitoreo.findByPk(id, {
-        include: [{ model: Negociacion, attributes: ['id_negociacion', 'fecha_inicio'] }],
-      });
+      const item = await Monitoreo.findByPk(id);
       if (!item) return res.status(404).json({ ok: false, error: 'MONITOREO_NOT_FOUND' });
 
-      // Si cambia la negociación, validar y mover la FK
       if (typeof req.body.id_negociacion !== 'undefined') {
         const nuevaNeg = await Negociacion.findByPk(req.body.id_negociacion);
         if (!nuevaNeg) return res.status(400).json({ ok: false, error: 'NEGOCIACION_NOT_FOUND' });
         item.id_negociacion = req.body.id_negociacion;
-
-        // Si el admin dejó la fecha vacía, re-default con la nueva negociación
-        if (req.body.fecha_inicio_monitoreo === '' || req.body.fecha_inicio_monitoreo === null) {
-          item.fecha_inicio_monitoreo = nuevaNeg.fecha_inicio;
-        }
       }
 
-      // Manejo de fecha según intención
       if (typeof req.body.fecha_inicio_monitoreo !== 'undefined') {
-        if (req.body.fecha_inicio_monitoreo === '' || req.body.fecha_inicio_monitoreo === null) {
-          // volver al valor por defecto (fecha de la negociación actual)
-          // usamos la negociación actual (ya actualizada si correspondía arriba)
-          if (!item.Negociacion) {
-            // si no vino incluida, la buscamos
-            const neg = await Negociacion.findByPk(item.id_negociacion);
-            item.fecha_inicio_monitoreo = neg ? neg.fecha_inicio : null;
-          } else {
-            item.fecha_inicio_monitoreo = item.Negociacion.fecha_inicio;
-          }
-        } else {
-          // establecer la fecha custom del admin
-          item.fecha_inicio_monitoreo = req.body.fecha_inicio_monitoreo;
-        }
+        item.fecha_inicio_monitoreo = req.body.fecha_inicio_monitoreo; // ya validada arriba
       }
 
       if (typeof req.body.comentarios !== 'undefined') {
@@ -187,4 +174,3 @@ router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, 
 });
 
 module.exports = router;
-
