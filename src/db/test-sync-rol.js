@@ -1,13 +1,14 @@
 // src/db/test-sync-rol.js
+// script de prueba para sincronizar la tabla de roles y cargar ejemplos
 const sequelize = require('./sequelize');
 const Rol = require('../modelos/Rol');
 
 (async () => {
   try {
-    await sequelize.sync(); // sin force/alter
+    await sequelize.sync(); // se sincroniza sin usar force ni alter
     console.log('✅ Tabla "roles" sincronizada.');
 
-    // Semilla opcional si la tabla está vacía
+    // se crean roles de ejemplo solo si no hay registros
     const count = await Rol.count();
     if (count === 0) {
       await Rol.bulkCreate([

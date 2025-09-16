@@ -2,7 +2,7 @@
 const jwt = require('jsonwebtoken');
 
 module.exports = function requireAuth(req, res, next) {
-  // Esperamos: Authorization: Bearer <token>
+  // se guarda en req.user la info del token (uid, usuario, rolId, iat, exp)
   const header = req.headers.authorization || '';
   const parts = header.split(' ');
   const token = parts.length === 2 && parts[0] === 'Bearer' ? parts[1] : null;

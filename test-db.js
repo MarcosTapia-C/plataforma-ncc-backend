@@ -7,7 +7,7 @@ const { URL } = require('url');
 
 (async function main() {
   try {
-    // 1) Verificar que cargó DATABASE_URL
+    //se verifica que exista la variable DATABASE_URL
     const raw = process.env.DATABASE_URL;
     if (!raw) {
       console.error('⛔ No se encontró DATABASE_URL en .env');
@@ -15,7 +15,7 @@ const { URL } = require('url');
     }
     console.log('🔎 DATABASE_URL detectada:', raw.slice(0, 40) + '...');
 
-    // 2) Parsear y conectar
+    // se parsea la url y se establece la conexión
     const u = new URL(raw);
     const conn = await mysql.createConnection({
       host: u.hostname,

@@ -8,9 +8,7 @@ const { requireRoles } = require('../middlewares/requireRoles');
 
 const { Monitoreo, Negociacion } = require('../modelos/asociaciones');
 
-// ==============================
-// GET /api/monitoreos → listar (PROTEGIDO)
-// ==============================
+// se listan todos los monitoreos (ruta protegida)
 router.get('/', requireAuth, async (_req, res) => {
   try {
     const list = await Monitoreo.findAll({
@@ -24,11 +22,10 @@ router.get('/', requireAuth, async (_req, res) => {
   }
 });
 
-// ========================================
-// GET /api/monitoreos/:id → detalle (PROTEGIDO)
-// ========================================
+// se obtiene un monitoreo por id (ruta protegida)
 router.get('/:id', requireAuth, async (req, res) => {
   try {
+    // se valida que el id sea un entero válido
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ ok: false, error: 'ID_INVALIDO' });
@@ -46,11 +43,8 @@ router.get('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// ========================================
-// POST /api/monitoreos → crear (SOLO ADMIN)
-// - fecha_inicio_monitoreo es OBLIGATORIA
-// - comentarios se guarda EXACTAMENTE como lo escribe el admin
-// ========================================
+// se crea un monitoreo (ruta protegida, solo Administrador)
+// fecha_inicio_monitoreo es obligatoria; comentarios se guarda tal como lo escribe el admin
 router.post(
   '/',
   requireAuth,
@@ -64,6 +58,7 @@ router.post(
     body('comentarios').optional().isString(),
   ],
   async (req, res) => {
+    // se validan los datos de entrada
     const errores = validationResult(req);
     if (!errores.isEmpty()) {
       return res.status(400).json({ ok: false, errores: errores.array() });
@@ -72,7 +67,7 @@ router.post(
     try {
       const { id_negociacion, fecha_inicio_monitoreo, comentarios } = req.body;
 
-      // Validar FK (no usamos su fecha, solo verificamos que exista)
+      // se valida la llave foránea: la negociación debe existir
       const neg = await Negociacion.findByPk(id_negociacion);
       if (!neg) return res.status(400).json({ ok: false, error: 'NEGOCIACION_NOT_FOUND' });
 
@@ -90,9 +85,7 @@ router.post(
   }
 );
 
-// ========================================
-// PUT /api/monitoreos/:id → actualizar (SOLO ADMIN)
-// ========================================
+// se actualiza un monitoreo por id (ruta protegida, solo Administrador)
 router.put(
   '/:id',
   requireAuth,
@@ -112,11 +105,13 @@ router.put(
     body('comentarios').optional().isString(),
   ],
   async (req, res) => {
+    // se validan los datos de entrada
     const errores = validationResult(req);
     if (!errores.isEmpty()) {
       return res.status(400).json({ ok: false, errores: errores.array() });
     }
     try {
+      // se valida que el id sea un entero válido
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id <= 0) {
         return res.status(400).json({ ok: false, error: 'ID_INVALIDO' });
@@ -125,16 +120,19 @@ router.put(
       const item = await Monitoreo.findByPk(id);
       if (!item) return res.status(404).json({ ok: false, error: 'MONITOREO_NOT_FOUND' });
 
+      // si llega una negociación nueva, se valida que exista
       if (typeof req.body.id_negociacion !== 'undefined') {
         const nuevaNeg = await Negociacion.findByPk(req.body.id_negociacion);
         if (!nuevaNeg) return res.status(400).json({ ok: false, error: 'NEGOCIACION_NOT_FOUND' });
         item.id_negociacion = req.body.id_negociacion;
       }
 
+      // se actualiza la fecha de inicio del monitoreo (ya validada)
       if (typeof req.body.fecha_inicio_monitoreo !== 'undefined') {
-        item.fecha_inicio_monitoreo = req.body.fecha_inicio_monitoreo; // ya validada
+        item.fecha_inicio_monitoreo = req.body.fecha_inicio_monitoreo;
       }
 
+      // se actualizan los comentarios (se guarda null si viene vacío)
       if (typeof req.body.comentarios !== 'undefined') {
         item.comentarios = req.body.comentarios && req.body.comentarios.trim()
           ? req.body.comentarios
@@ -150,11 +148,10 @@ router.put(
   }
 );
 
-// ========================================
-// DELETE /api/monitoreos/:id → eliminar (SOLO ADMIN)
-// ========================================
+// se elimina un monitoreo por id (ruta protegida, solo Administrador)
 router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, res) => {
   try {
+    // se valida que el id sea un entero válido
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ ok: false, error: 'ID_INVALIDO' });

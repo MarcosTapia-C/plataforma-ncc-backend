@@ -1,6 +1,6 @@
 // src/modelos/Sindicato.js
 const { DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize'); // misma instancia
+const sequelize = require('../db/sequelize'); // se usa la misma instancia que los demás modelos
 
 const Sindicato = sequelize.define('Sindicato', {
   id_sindicato: {

@@ -12,20 +12,20 @@ const sindicatosRouter = require('./rutas/sindicatos')
 const negociacionesRouter = require('./rutas/negociaciones');
 const monitoreosRouter = require('./rutas/monitoreos');
 
-// --- Sequelize & Modelos ---
+// se importan sequelize y los modelos necesarios
 const sequelize = require('./db/sequelize');
 const { Rol, Usuario } = require('./modelos/asociaciones');
 
-// --- Rutas ---
+// se importan las rutas de la API
 const usuariosRouter = require('./rutas/usuarios');
 const rolesRouter = require('./rutas/roles');
 
-// --- Middleware de autenticación (JWT) ---
+// middleware de autenticación por token (JWT)
 const requireAuth = require('./middlewares/requireAuth');
 
 const app = express();
 
-// ---------- Validación mínima de env ----------
+// validación básica de variables de entorno
 const { DATABASE_URL, PORT = 3000, JWT_SECRET } = process.env;
 if (!DATABASE_URL) {
   console.error('⛔ Falta la variable de entorno DATABASE_URL');
@@ -36,7 +36,7 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
-// ---------- Middlewares ----------
+// middlewares principales de la aplicación
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
@@ -47,7 +47,7 @@ app.get('/', (_req, res) => {
   res.json({ ok: true, msg: 'Plataforma NCC API' });
 });
 
-// Salud usando Sequelize (sin mysql2 duplicado)
+// verificación rápida de conexión usando sequelize
 app.get('/api/health', async (_req, res) => {
   try {
     const [rows] = await sequelize.query('SELECT 1 AS ok;');
@@ -58,7 +58,7 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
-// Salud extendida: authenticate()
+// verificación de conexión usando sequelize.authenticate()
 app.get('/api/diagnostico', async (_req, res) => {
   try {
     await sequelize.authenticate(); // Sequelize
@@ -69,13 +69,13 @@ app.get('/api/diagnostico', async (_req, res) => {
 });
 
 // ---------- Montaje de rutas ----------
-// IMPORTANTE: dejamos /api/login abierto
+// la ruta /api/login queda abierta
 app.use('/api', rutasAuth);                // -> POST /api/login (abierta)
 
-// Dejamos roles abiertos por ahora (demo)
+// las rutas de roles quedan abiertas por ahora
 app.use('/api/roles', rolesRouter);
 
-// PROTEGIDA: requiere token Bearer
+// rutas protegidas: requieren token Bearer
 app.use('/api/usuarios', requireAuth, usuariosRouter);
 
 app.use('/api/empresas', empresasRouter);
@@ -85,7 +85,7 @@ app.use('/api/negociaciones', negociacionesRouter);
 app.use('/api/monitoreos', monitoreosRouter);
 
 // ---------- Middlewares de cierre ----------
-// 404 para rutas no encontradas
+// respuesta 404 para rutas no encontradas
 app.use((_req, res) => {
   res.status(404).json({ ok: false, error: 'NOT_FOUND' });
 });

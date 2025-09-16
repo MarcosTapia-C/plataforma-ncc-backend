@@ -2,12 +2,12 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 
-const requireAuth = require('../middlewares/requireAuth');
-const { requireRoles } = require('../middlewares/requireRoles');
+const requireAuth = require('../middlewares/requireAuth');        // se importa el middleware de autenticación
+const { requireRoles } = require('../middlewares/requireRoles');  // se importa el middleware de roles
 
 const { Negociacion, Empresa, Sindicato, Minera } = require('../modelos/asociaciones');
 
-// Reutilizamos el mismo include en todos los endpoints que devuelven negociaciones
+// se define un include reutilizable para traer datos relacionados en las consultas de negociaciones
 const NEGOC_INCLUDES = [
   {
     model: Empresa,
@@ -17,7 +17,7 @@ const NEGOC_INCLUDES = [
   { model: Sindicato, attributes: ['id_sindicato', 'nombre_sindicato'] },
 ];
 
-// ---------- Helpers de fechas/números ----------
+// funciones auxiliares para manejar fechas y cálculos numéricos
 function toDate(val) {
   if (!val) return null;
   const d = new Date(val);
@@ -54,6 +54,7 @@ function calcularPorcentajeDesdePersonal(dot, pers) {
   return Math.round(v * 100) / 100;
 }
 
+// función para validar reglas de negocio y autocompletar valores cuando corresponde
 function validarReglasNegocio(body) {
   const {
     fecha_inicio,
@@ -65,33 +66,33 @@ function validarReglasNegocio(body) {
     estado,
   } = body;
 
-  // --- Reglas de FECHAS ---
+  // validaciones de fechas
   const dIni = toDate(fecha_inicio);
   let dFin = toDate(fecha_termino);
   const dVig = toDate(vencimiento_contrato_comercial);
 
-  // Si está Cerrada y viene inicio sin fin -> autocompletar fin = inicio + 36 meses
+  // si está Cerrada y tiene inicio sin término, se asigna fin = inicio + 36 meses
   if (estado === 'Cerrada' && dIni && !dFin) {
     body.fecha_termino = addMonthsStr(fecha_inicio, 36);
     dFin = toDate(body.fecha_termino);
   }
 
-  // término >= inicio
+  // término debe ser mayor o igual a inicio
   if (dIni && dFin && dFin < dIni) {
     return 'La fecha de término no puede ser anterior a la fecha de inicio.';
   }
 
-  // Vigencia del contrato colectivo: máximo 36 meses
+  // vigencia máxima del contrato colectivo: 36 meses
   if (dIni && dFin && monthsDiff(fecha_inicio, body.fecha_termino) > 36) {
     return 'La vigencia del contrato colectivo no puede exceder 36 meses.';
   }
 
-  // término <= vigencia contrato comercial (si lo usas como control externo)
+  // término no debe superar la vigencia del contrato comercial
   if (dFin && dVig && dFin > dVig) {
     return 'La fecha de término no puede ser posterior a la vigencia del contrato comercial.';
   }
 
-  // --- Reglas de NÚMEROS ---
+  // validaciones numéricas
   const dot = (dotacion_total ?? '') === '' ? null : Number(dotacion_total);
   const pers = (personal_sindicalizado ?? '') === '' ? null : Number(personal_sindicalizado);
   const porc = (porcentaje_sindicalizado ?? '') === '' ? null : Number(porcentaje_sindicalizado);
@@ -105,7 +106,7 @@ function validarReglasNegocio(body) {
     return 'El personal sindicalizado no puede ser mayor que la dotación total.';
   }
 
-  // Autocálculos consistentes
+  // autocálculos para mantener consistencia entre dotación, personal y porcentaje
   if (dot !== null && porc !== null && pers === null) {
     body.personal_sindicalizado = calcularPersonalDesdePorcentaje(dot, porc);
   }
@@ -119,12 +120,10 @@ function validarReglasNegocio(body) {
     }
   }
 
-  return null; // ok
+  return null; // validación ok
 }
 
-// ==============================
-// GET /api/negociaciones → listar (PROTEGIDO)
-// ==============================
+// se listan todas las negociaciones (ruta protegida)
 router.get('/', requireAuth, async (_req, res) => {
   try {
     const list = await Negociacion.findAll({
@@ -138,9 +137,7 @@ router.get('/', requireAuth, async (_req, res) => {
   }
 });
 
-// ========================================
-// GET /api/negociaciones/:id → detalle (PROTEGIDO)
-// ========================================
+// se obtiene una negociación por id (ruta protegida)
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -158,9 +155,7 @@ router.get('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// ========================================
-// POST /api/negociaciones → crear (SOLO ADMIN)
-// ========================================
+// se crea una negociación (ruta protegida, solo Administrador)
 router.post(
   '/',
   requireAuth,
@@ -186,17 +181,18 @@ router.post(
     }
 
     try {
-      // Validación FKs
+      // se validan llaves foráneas de empresa y sindicato
       const { id_empresa, id_sindicato } = req.body;
       const empresa = await Empresa.findByPk(id_empresa);
       if (!empresa) return res.status(400).json({ ok: false, error: 'EMPRESA_NOT_FOUND' });
       const sindicato = await Sindicato.findByPk(id_sindicato);
       if (!sindicato) return res.status(400).json({ ok: false, error: 'SINDICATO_NOT_FOUND' });
 
-      // Reglas de negocio + autocalculo
+      // se validan las reglas de negocio y se aplican autocalculos si corresponde
       const msg = validarReglasNegocio(req.body);
       if (msg) return res.status(400).json({ ok: false, mensaje: msg });
 
+      // se crea la negociación
       const creado = await Negociacion.create(req.body);
       const creadoFull = await Negociacion.findByPk(creado.id_negociacion, { include: NEGOC_INCLUDES });
       res.status(201).json({ ok: true, data: creadoFull });
@@ -207,9 +203,7 @@ router.post(
   }
 );
 
-// ========================================
-// PUT /api/negociaciones/:id → actualizar (SOLO ADMIN)
-// ========================================
+// se actualiza una negociación por id (ruta protegida, solo Administrador)
 router.put(
   '/:id',
   requireAuth,
@@ -243,7 +237,7 @@ router.put(
 
       const { id_empresa, id_sindicato } = req.body;
 
-      // Validar FKs si llegan
+      // se validan llaves foráneas si fueron incluidas en la petición
       if (typeof id_empresa !== 'undefined') {
         const empresa = await Empresa.findByPk(id_empresa);
         if (!empresa) return res.status(400).json({ ok: false, error: 'EMPRESA_NOT_FOUND' });
@@ -253,12 +247,12 @@ router.put(
         if (!sindicato) return res.status(400).json({ ok: false, error: 'SINDICATO_NOT_FOUND' });
       }
 
-      // Aplicar reglas de negocio + autocalculo (sobre la mezcla de item + body)
+      // se validan reglas de negocio usando la mezcla de datos previos y nuevos
       const bodyMerged = { ...item.toJSON(), ...req.body };
       const msg = validarReglasNegocio(bodyMerged);
       if (msg) return res.status(400).json({ ok: false, mensaje: msg });
 
-      // Guardar cambios
+      // se aplican y guardan los cambios
       Object.assign(item, req.body, {
         personal_sindicalizado: bodyMerged.personal_sindicalizado,
         porcentaje_sindicalizado: bodyMerged.porcentaje_sindicalizado,
@@ -274,9 +268,7 @@ router.put(
   }
 );
 
-// ========================================
-// DELETE /api/negociaciones/:id → eliminar (SOLO ADMIN)
-// ========================================
+// se elimina una negociación por id (ruta protegida, solo Administrador)
 router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, res) => {
   try {
     const id = Number(req.params.id);

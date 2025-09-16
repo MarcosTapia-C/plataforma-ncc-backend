@@ -1,4 +1,5 @@
 // src/db/test-sequelize.js
+// script de prueba para verificar la conexión con Sequelize
 const sequelize = require('./sequelize');
 
 (async () => {

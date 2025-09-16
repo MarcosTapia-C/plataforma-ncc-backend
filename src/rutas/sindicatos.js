@@ -3,15 +3,13 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 
-const requireAuth = require('../middlewares/requireAuth');        // default export
-const { requireRoles } = require('../middlewares/requireRoles');  // named export
+const requireAuth = require('../middlewares/requireAuth');        // se importa el middleware de autenticación
+const { requireRoles } = require('../middlewares/requireRoles');  // se importa el middleware de roles
 
-// 👇 IMPORTA TAMBIÉN Negociacion para validar dependencias
+// se importa también Negociacion para validar dependencias
 const { Sindicato, Negociacion } = require('../modelos/asociaciones');
 
-// ==============================
-// GET /api/sindicatos → listar (PROTEGIDO)
-// ==============================
+// se listan todos los sindicatos (ruta protegida)
 router.get('/', requireAuth, async (_req, res) => {
   try {
     const sindicatos = await Sindicato.findAll({ order: [['id_sindicato', 'ASC']] });
@@ -22,9 +20,7 @@ router.get('/', requireAuth, async (_req, res) => {
   }
 });
 
-// ========================================
-// GET /api/sindicatos/:id → detalle (PROTEGIDO)
-// ========================================
+// se obtiene un sindicato por id (ruta protegida)
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -42,9 +38,7 @@ router.get('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// ========================================
-// POST /api/sindicatos → crear (PROTEGIDO + SOLO ADMIN)
-// ========================================
+// se crea un sindicato (ruta protegida, solo Administrador)
 router.post(
   '/',
   requireAuth,
@@ -72,9 +66,7 @@ router.post(
   }
 );
 
-// ========================================
-// PUT /api/sindicatos/:id → actualizar (PROTEGIDO + SOLO ADMIN)
-// ========================================
+// se actualiza un sindicato por id (ruta protegida, solo Administrador)
 router.put(
   '/:id',
   requireAuth,
@@ -107,10 +99,8 @@ router.put(
   }
 );
 
-// ========================================
-// DELETE /api/sindicatos/:id → eliminar (PROTEGIDO + SOLO ADMIN)
-//  ⛔ Bloquea si hay negociaciones asociadas
-// ========================================
+// se elimina un sindicato por id (ruta protegida, solo Administrador)
+// se bloquea la eliminación si existen negociaciones asociadas
 router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -121,7 +111,7 @@ router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, 
     const sindicato = await Sindicato.findByPk(id);
     if (!sindicato) return res.status(404).json({ ok: false, error: 'SINDICATO_NOT_FOUND' });
 
-    // 🔒 Validación de integridad: ¿hay negociaciones que usan este sindicato?
+    // se valida la integridad: si hay negociaciones que usan este sindicato, no se puede eliminar
     const enUso = await Negociacion.count({ where: { id_sindicato: id } });
     if (enUso > 0) {
       return res.status(409).json({
@@ -141,4 +131,3 @@ router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, 
 });
 
 module.exports = router;
-

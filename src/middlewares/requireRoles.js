@@ -1,34 +1,35 @@
 // src/middlewares/requireRoles.js
 const { Usuario, Rol } = require('../modelos/asociaciones');
 
+// middleware para validar que el usuario tenga uno de los roles permitidos
 function requireRoles(permitted = []) {
   return async (req, res, next) => {
     try {
-      // Debe venir seteado por requireAuth
+      // se espera que req.user haya sido definido por requireAuth
       if (!req.user) {
         return res.status(401).json({ ok: false, error: 'NO_AUTH' });
       }
 
-      // Intentar obtener roles desde el token o desde BD
+      // se obtienen los roles desde el token o desde la base de datos
       let userRoles = [];
 
-      // Si en tu token algún día incluyes 'roles' o 'rolNombre', se usan:
+      // si el token incluye 'roles' o 'rolNombre', se usan esos valores
       if (Array.isArray(req.user.roles)) {
         userRoles = req.user.roles; // ej: ['Administrador']
       } else if (req.user.rolNombre) {
         userRoles = [req.user.rolNombre];
       } else {
-        // Caso actual: buscamos en BD usando 'uid' del token
+        // en este caso se busca en la base de datos usando el uid del token
         const dbUser = await Usuario.findByPk(req.user.uid, {
           include: [{ model: Rol, attributes: ['id_rol', 'nombre_rol'] }],
         });
         if (dbUser?.Rol?.nombre_rol) userRoles = [dbUser.Rol.nombre_rol];
       }
 
-      // Si no se exigieron roles concretos, basta estar autenticado
+      // si no se definieron roles permitidos, alcanza con estar autenticado
       if (!permitted.length) return next();
 
-      // ¿Algún rol del usuario está permitido?
+      // se verifica si algún rol del usuario está en la lista de permitidos
       const autorizado = userRoles.some((r) => permitted.includes(r));
       if (!autorizado) {
         return res.status(403).json({ ok: false, error: 'FORBIDDEN_ROLE' });
@@ -43,4 +44,5 @@ function requireRoles(permitted = []) {
 }
 
 module.exports = { requireRoles };
+
 

@@ -2,10 +2,10 @@
 require('dotenv').config();
 const mysql = require('mysql2/promise');
 
-// Pool de conexiones (reutilizable en toda la app)
+// Pool de conexiones para usos fuera de la API principal
 const pool = mysql.createPool(process.env.DATABASE_URL);
 
-// Función de salud rápida
+// función de ping para verificar la conexión
 async function ping() {
   const [rows] = await pool.query('SELECT 1 AS ok');
   return rows[0]?.ok === 1;

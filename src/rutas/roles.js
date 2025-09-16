@@ -6,10 +6,10 @@ const { Op } = require('sequelize');
 
 const { Rol, Usuario } = require('../modelos/asociaciones');
 const requireAuth = require('../middlewares/requireAuth');
-const { requireRoles } = require('../middlewares/requireRoles'); // <-- IMPORT CORRECTO
+const { requireRoles } = require('../middlewares/requireRoles'); //// se importa el middleware requireRoles
 
 // ==============================
-// GET /api/roles  → lista todos (PROTEGIDO)
+// GET // se listan todos los roles (ruta protegida)
 // ==============================
 router.get('/', requireAuth, async (_req, res) => {
   try {
@@ -22,7 +22,7 @@ router.get('/', requireAuth, async (_req, res) => {
 });
 
 // ========================================
-// GET /api/roles/:id → detalle por id (PROTEGIDO)
+// GET // se obtiene el detalle de un rol por id (ruta protegida)
 // ========================================
 router.get('/:id', requireAuth, async (req, res) => {
   try {
@@ -42,12 +42,12 @@ router.get('/:id', requireAuth, async (req, res) => {
 });
 
 // ========================================
-// POST /api/roles → crear rol (PROTEGIDO + SOLO ADMIN)
+// POST // se crea un rol (ruta protegida, solo Administrador)
 // ========================================
 router.post(
   '/',
   requireAuth,
-  requireRoles(['Administrador']), // <-- USO CORRECTO
+  requireRoles(['Administrador']), 
   [
     body('nombre_rol')
       .trim()
@@ -63,7 +63,7 @@ router.post(
 
       const { nombre_rol } = req.body;
 
-      // Duplicado
+      // se valida que no exista otro rol con el mismo nombre
       const existe = await Rol.findOne({ where: { nombre_rol } });
       if (existe) {
         return res.status(409).json({ ok: false, mensaje: 'Ese rol ya existe.' });
@@ -79,12 +79,12 @@ router.post(
 );
 
 // ========================================
-// PUT /api/roles/:id → actualizar (PROTEGIDO + SOLO ADMIN)
+// PUT // se actualiza un rol por id (ruta protegida, solo Administrador)
 // ========================================
 router.put(
   '/:id',
   requireAuth,
-  requireRoles(['Administrador']), // <-- USO CORRECTO
+  requireRoles(['Administrador']),
   [
     body('nombre_rol')
       .optional()
@@ -108,7 +108,7 @@ router.put(
 
       const { nombre_rol } = req.body;
       if (typeof nombre_rol !== 'undefined') {
-        // Colisión con otro rol
+        // se revisa que no exista otro rol con este nombre (evitar duplicados)
         const colision = await Rol.findOne({
           where: {
             [Op.and]: [
@@ -133,13 +133,12 @@ router.put(
 );
 
 // ========================================
-// DELETE /api/roles/:id → eliminar (PROTEGIDO + SOLO ADMIN)
-//  - bloquea si hay usuarios asociados
+// DELETE // se elimina un rol por id (ruta protegida, solo Administrador)
 // ========================================
 router.delete(
   '/:id',
   requireAuth,
-  requireRoles(['Administrador']), // <-- USO CORRECTO
+  requireRoles(['Administrador']),
   async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -150,7 +149,7 @@ router.delete(
       const rol = await Rol.findByPk(id);
       if (!rol) return res.status(404).json({ ok: false, error: 'ROL_NOT_FOUND' });
 
-      // No borrar si tiene usuarios
+      // se bloquea el borrado si hay usuarios asociados
       const asociados = await Usuario.count({ where: { id_rol: id } });
       if (asociados > 0) {
         return res.status(409).json({
