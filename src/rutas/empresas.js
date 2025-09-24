@@ -52,10 +52,16 @@ router.post(
   requireRoles(['Administrador']),
   [
     body('id_minera').isInt({ gt: 0 }).withMessage('id_minera debe ser entero positivo.'),
-    body('nombre_empresa').trim().notEmpty().isLength({ max: 100 })
-      .withMessage('Nombre obligatorio (máx 100).'),
-    body('rut_empresa').trim().notEmpty().isLength({ max: 100 })
-      .withMessage('RUT obligatorio (máx 100).'),
+    body('nombre_empresa')
+  .trim()
+  .notEmpty().withMessage('El nombre de la empresa es obligatorio.')
+  .isLength({ max: 100 }).withMessage('El nombre no puede superar los 100 caracteres.'),
+
+body('rut_empresa')
+  .trim()
+  .notEmpty().withMessage('El RUT es obligatorio.')
+  .isLength({ max: 100 }).withMessage('El RUT no puede superar los 100 caracteres.'),
+
   ],
   async (req, res) => {
     const errores = validationResult(req);
