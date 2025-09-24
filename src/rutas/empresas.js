@@ -4,13 +4,11 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 
-const requireAuth = require('../middlewares/requireAuth');        // se importa el middleware de autenticación
-const { requireRoles } = require('../middlewares/requireRoles');  // se importa el middleware de roles
-
-// se importa Negociacion para validar dependencias antes de eliminar
+const requireAuth = require('../middlewares/requireAuth');
+const { requireRoles } = require('../middlewares/requireRoles');
 const { Empresa, Minera, Negociacion } = require('../modelos/asociaciones');
 
-// se listan todas las empresas (ruta protegida)
+// LISTAR
 router.get('/', requireAuth, async (_req, res) => {
   try {
     const empresas = await Empresa.findAll({
@@ -24,7 +22,7 @@ router.get('/', requireAuth, async (_req, res) => {
   }
 });
 
-// se obtiene una empresa por id (ruta protegida)
+// OBTENER POR ID
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -46,23 +44,18 @@ router.get('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// se crea una empresa (ruta protegida, solo Administrador)
-// reglas: id_minera válido; nombre_empresa y rut_empresa obligatorios (máx 100);
-// RUT único a nivel plataforma; (nombre_empresa, id_minera) único dentro de la misma minera
+// CREAR (Administrador)
+// Reglas: (rut_empresa, id_minera) único y (nombre_empresa, id_minera) único
 router.post(
   '/',
   requireAuth,
   requireRoles(['Administrador']),
   [
     body('id_minera').isInt({ gt: 0 }).withMessage('id_minera debe ser entero positivo.'),
-    body('nombre_empresa')
-      .trim()
-      .notEmpty().withMessage('El nombre de la empresa es obligatorio.')
-      .isLength({ max: 100 }).withMessage('Máximo 100 caracteres.'),
-    body('rut_empresa')
-      .trim()
-      .notEmpty().withMessage('El RUT es obligatorio.')
-      .isLength({ max: 100 }).withMessage('Máximo 100 caracteres.'),
+    body('nombre_empresa').trim().notEmpty().isLength({ max: 100 })
+      .withMessage('Nombre obligatorio (máx 100).'),
+    body('rut_empresa').trim().notEmpty().isLength({ max: 100 })
+      .withMessage('RUT obligatorio (máx 100).'),
   ],
   async (req, res) => {
     const errores = validationResult(req);
@@ -72,25 +65,28 @@ router.post(
     try {
       const { id_minera, nombre_empresa, rut_empresa } = req.body;
 
-      // se valida que exista la minera (FK)
+      // validar FK minera
       const minera = await Minera.findByPk(id_minera);
-      if (!minera) {
-        return res.status(400).json({ ok: false, error: 'MINERA_NOT_FOUND' });
-      }
+      if (!minera) return res.status(400).json({ ok: false, error: 'MINERA_NOT_FOUND' });
 
-      // se valida RUT único a nivel plataforma
-      const rutDuplicado = await Empresa.findOne({ where: { rut_empresa } });
-      if (rutDuplicado) {
+      // === Cambios clave: unicidad POR MINERA ===
+      // RUT + MINERA
+      const rutDuplicadoMismaMinera = await Empresa.findOne({
+        where: { rut_empresa, id_minera },
+      });
+      if (rutDuplicadoMismaMinera) {
         return res.status(409).json({
           ok: false,
-          error: 'RUT_DUPLICADO',
-          mensaje: 'El RUT ya está registrado en otra empresa.',
+          error: 'RUT_MINERA_DUPLICADO',
+          mensaje: 'Ya existe una empresa con ese RUT en la minera indicada.',
         });
       }
 
-      // se valida nombre único dentro de la misma minera
-      const nombreEnMinera = await Empresa.findOne({ where: { id_minera, nombre_empresa } });
-      if (nombreEnMinera) {
+      // NOMBRE + MINERA
+      const nombreDuplicadoMismaMinera = await Empresa.findOne({
+        where: { nombre_empresa, id_minera },
+      });
+      if (nombreDuplicadoMismaMinera) {
         return res.status(409).json({
           ok: false,
           error: 'NOMBRE_MINERA_DUPLICADO',
@@ -107,24 +103,18 @@ router.post(
   }
 );
 
-// se actualiza una empresa por id (ruta protegida, solo Administrador)
-// se mantienen las reglas y se asegura RUT único global al actualizar
+// ACTUALIZAR (Administrador)
+// Mantiene la unicidad por minera en RUT y NOMBRE
 router.put(
   '/:id',
   requireAuth,
   requireRoles(['Administrador']),
   [
     body('id_minera').optional().isInt({ gt: 0 }).withMessage('id_minera debe ser entero positivo.'),
-    body('nombre_empresa')
-      .optional()
-      .trim()
-      .notEmpty().withMessage('El nombre no puede quedar vacío.')
-      .isLength({ max: 100 }).withMessage('Máximo 100 caracteres.'),
-    body('rut_empresa')
-      .optional()
-      .trim()
-      .notEmpty().withMessage('El RUT no puede quedar vacío.')
-      .isLength({ max: 100 }).withMessage('Máximo 100 caracteres.'),
+    body('nombre_empresa').optional().trim().notEmpty().isLength({ max: 100 })
+      .withMessage('Nombre inválido (máx 100).'),
+    body('rut_empresa').optional().trim().notEmpty().isLength({ max: 100 })
+      .withMessage('RUT inválido (máx 100).'),
   ],
   async (req, res) => {
     const errores = validationResult(req);
@@ -144,49 +134,51 @@ router.put(
 
       const { id_minera, nombre_empresa, rut_empresa } = req.body;
 
-      // si cambia la minera, se valida la FK
+      // validar FK minera si cambia
       if (typeof id_minera !== 'undefined') {
         const minera = await Minera.findByPk(id_minera);
-        if (!minera) {
-          return res.status(400).json({ ok: false, error: 'MINERA_NOT_FOUND' });
-        }
+        if (!minera) return res.status(400).json({ ok: false, error: 'MINERA_NOT_FOUND' });
       }
 
-      // se valida RUT único a nivel plataforma (excluyendo el propio registro)
-      if (typeof rut_empresa !== 'undefined') {
-        const rutDuplicado = await Empresa.findOne({
-          where: { rut_empresa, id_empresa: { [Op.ne]: id } },
-        });
-        if (rutDuplicado) {
-          return res.status(409).json({
-            ok: false,
-            error: 'RUT_DUPLICADO',
-            mensaje: 'El RUT ya está registrado en otra empresa.',
-          });
-        }
-      }
-
-      // se valida nombre único dentro de la misma minera (considerando cambios)
+      // destino final de los campos (considerando los que no cambian)
       const mineraFinal = typeof id_minera !== 'undefined' ? id_minera : empresa.id_minera;
-      const nombreFinal =
-        typeof nombre_empresa !== 'undefined' ? nombre_empresa : empresa.nombre_empresa;
+      const rutFinal    = typeof rut_empresa !== 'undefined' ? rut_empresa : empresa.rut_empresa;
+      const nombreFinal = typeof nombre_empresa !== 'undefined' ? nombre_empresa : empresa.nombre_empresa;
 
-      const nombreEnMinera = await Empresa.findOne({
+      // === Unicidad POR MINERA excluyendo el propio registro ===
+      // RUT + MINERA
+      const collisionRut = await Empresa.findOne({
         where: {
+          rut_empresa: rutFinal,
           id_minera: mineraFinal,
-          nombre_empresa: nombreFinal,
           id_empresa: { [Op.ne]: id },
         },
       });
-      if (nombreEnMinera) {
+      if (collisionRut) {
         return res.status(409).json({
           ok: false,
-          error: 'NOMBRE_MINERA_DUPLICADO',
-          mensaje: 'Ya existe una empresa con ese nombre en la misma minera.',
+          error: 'RUT_MINERA_DUPLICADO',
+          mensaje: 'Ya existe otra empresa con ese RUT en la minera indicada.',
         });
       }
 
-      // se aplican los cambios permitidos
+      // NOMBRE + MINERA
+      const collisionNombre = await Empresa.findOne({
+        where: {
+          nombre_empresa: nombreFinal,
+          id_minera: mineraFinal,
+          id_empresa: { [Op.ne]: id },
+        },
+      });
+      if (collisionNombre) {
+        return res.status(409).json({
+          ok: false,
+          error: 'NOMBRE_MINERA_DUPLICADO',
+          mensaje: 'Ya existe otra empresa con ese nombre en la misma minera.',
+        });
+      }
+
+      // aplicar cambios
       if (typeof id_minera !== 'undefined') empresa.id_minera = id_minera;
       if (typeof nombre_empresa !== 'undefined') empresa.nombre_empresa = nombre_empresa;
       if (typeof rut_empresa !== 'undefined') empresa.rut_empresa = rut_empresa;
@@ -200,8 +192,7 @@ router.put(
   }
 );
 
-// se elimina una empresa por id (ruta protegida, solo Administrador)
-// se bloquea la eliminación si existen negociaciones asociadas
+// ELIMINAR (Administrador)
 router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -214,7 +205,6 @@ router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, 
       return res.status(404).json({ ok: false, error: 'EMPRESA_NOT_FOUND' });
     }
 
-    // se verifica si existen negociaciones asociadas a la empresa
     const hijos = await Negociacion.count({ where: { id_empresa: id } });
     if (hijos > 0) {
       return res.status(409).json({
@@ -232,3 +222,4 @@ router.delete('/:id', requireAuth, requireRoles(['Administrador']), async (req, 
 });
 
 module.exports = router;
+

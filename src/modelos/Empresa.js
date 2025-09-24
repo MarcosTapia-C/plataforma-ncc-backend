@@ -2,7 +2,7 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelize'); // misma instancia que los demás modelos
 
-// se define el modelo Empresa con id, minera, nombre y rut
+// Definición de Empresa
 const Empresa = sequelize.define('Empresa', {
   id_empresa: {
     type: DataTypes.INTEGER,
@@ -19,8 +19,8 @@ const Empresa = sequelize.define('Empresa', {
   },
   rut_empresa: {
     type: DataTypes.STRING(100),
-    allowNull: false,           // campo obligatorio
-    unique: true,               // cada empresa con RUT único
+    allowNull: false,   // campo obligatorio
+    // 👇 eliminamos unique:true porque lo controlamos en backend
   },
 }, {
   tableName: 'empresas_contratistas', // nombre real de la tabla en BD
@@ -28,4 +28,5 @@ const Empresa = sequelize.define('Empresa', {
 });
 
 module.exports = Empresa;
+
 
