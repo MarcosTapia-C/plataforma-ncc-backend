@@ -20,8 +20,7 @@ const Empresa = sequelize.define('Empresa', {
   rut_empresa: {
     type: DataTypes.STRING(100),
     allowNull: false,   // campo obligatorio
-    // 👇 eliminamos unique:true porque lo controlamos en backend
-  },
+      },
 }, {
   tableName: 'empresas_contratistas', // nombre real de la tabla en BD
   timestamps: false,
