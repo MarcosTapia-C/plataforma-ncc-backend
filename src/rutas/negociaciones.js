@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
+const { Op } = require('sequelize');
 
 const requireAuth = require('../middlewares/requireAuth');        // se importa el middleware de autenticación
 const { requireRoles } = require('../middlewares/requireRoles');  // se importa el middleware de roles
@@ -188,6 +189,26 @@ router.post(
       const sindicato = await Sindicato.findByPk(id_sindicato);
       if (!sindicato) return res.status(400).json({ ok: false, error: 'SINDICATO_NOT_FOUND' });
 
+      // normalizamos contrato (evita duplicados por espacios)
+      const contratoTrim = String(req.body.contrato || '').trim();
+      req.body.contrato = contratoTrim;
+
+      // chequeo de duplicado (misma empresa, sindicato y contrato)
+      const dup = await Negociacion.findOne({
+        where: {
+          id_empresa,
+          id_sindicato,
+          contrato: contratoTrim,
+        },
+      });
+      if (dup) {
+        return res.status(409).json({
+          ok: false,
+          error: 'NEGOCIACION_DUPLICADA',
+          mensaje: 'Ya existe una negociación para la misma minera,empresa, sindicato y contrato.',
+        });
+      }
+
       // se validan las reglas de negocio y se aplican autocalculos si corresponde
       const msg = validarReglasNegocio(req.body);
       if (msg) return res.status(400).json({ ok: false, mensaje: msg });
@@ -249,11 +270,35 @@ router.put(
 
       // se validan reglas de negocio usando la mezcla de datos previos y nuevos
       const bodyMerged = { ...item.toJSON(), ...req.body };
+
+      // normalizamos contrato si viene
+      if (typeof bodyMerged.contrato !== 'undefined') {
+        bodyMerged.contrato = String(bodyMerged.contrato || '').trim();
+      }
+
+      // ¿provocaría duplicado con otro registro?
+      const dupUpd = await Negociacion.findOne({
+        where: {
+          id_empresa: bodyMerged.id_empresa,
+          id_sindicato: bodyMerged.id_sindicato,
+          contrato: bodyMerged.contrato,
+          id_negociacion: { [Op.ne]: id }, // excluye el mismo registro
+        },
+      });
+      if (dupUpd) {
+        return res.status(409).json({
+          ok: false,
+          error: 'NEGOCIACION_DUPLICADA',
+          mensaje: 'Ya existe otra negociación con la misma minera/empresa, sindicato y contrato.',
+        });
+      }
+
       const msg = validarReglasNegocio(bodyMerged);
       if (msg) return res.status(400).json({ ok: false, mensaje: msg });
 
       // se aplican y guardan los cambios
       Object.assign(item, req.body, {
+        contrato: bodyMerged.contrato, // ya normalizado
         personal_sindicalizado: bodyMerged.personal_sindicalizado,
         porcentaje_sindicalizado: bodyMerged.porcentaje_sindicalizado,
       });
