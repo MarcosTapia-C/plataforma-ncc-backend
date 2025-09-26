@@ -205,7 +205,7 @@ router.post(
         return res.status(409).json({
           ok: false,
           error: 'NEGOCIACION_DUPLICADA',
-          mensaje: 'Ya existe una negociación para la misma minera,empresa, sindicato y contrato.',
+          mensaje: 'Esta negociación ya existe en la plataforma.',
         });
       }
 
